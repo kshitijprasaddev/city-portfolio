@@ -1,0 +1,7 @@
+{
+  "buildCommand": "npx next build",
+  "framework": "nextjs",
+  "git": {
+    "lfs": true
+  }
+}

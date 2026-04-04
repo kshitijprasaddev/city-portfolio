@@ -3,40 +3,8 @@ import { useEffect, useRef, useCallback } from "react";
 import { useDrivingStore } from "@/hooks/useDrivingStore";
 import { NARRATION_STEPS } from "@/data/narration";
 
-// ── Voice selection for Web Speech API fallback ─────────────────────────────
-const PREFERRED_VOICES = [
-  "Microsoft Guy Online",
-  "Microsoft Ryan Online",
-  "Microsoft Mark Online",
-  "Google UK English Male",
-  "Microsoft David",
-  "Microsoft Mark",
-  "Daniel",
-  "Alex",
-];
-
-function pickDeepVoice(): SpeechSynthesisVoice | undefined {
-  const voices = speechSynthesis.getVoices();
-  for (const name of PREFERRED_VOICES) {
-    const v = voices.find(
-      (v) => v.name.includes(name) && v.lang.startsWith("en")
-    );
-    if (v) return v;
-  }
-  const male = voices.find(
-    (v) =>
-      v.lang.startsWith("en") &&
-      (v.name.toLowerCase().includes("male") ||
-        v.name.toLowerCase().includes("david") ||
-        v.name.toLowerCase().includes("james"))
-  );
-  if (male) return male;
-  return voices.find((v) => v.lang.startsWith("en"));
-}
-
 /**
- * Narration engine with ElevenLabs API support.
- * Tries the /api/tts route first (ElevenLabs); falls back to Web Speech API.
+ * Narration engine using ElevenLabs API exclusively.
  * Each building narrates only once per session.
  */
 export default function NarrationSystem({
@@ -47,68 +15,25 @@ export default function NarrationSystem({
   const visitedRef = useRef<Set<string>>(new Set());
   const speakingRef = useRef(false);
   const introPlayedRef = useRef(false);
-  const voiceRef = useRef<SpeechSynthesisVoice | undefined>(undefined);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeBuilding = useDrivingStore((s) => s.activeBuilding);
   const narrationOn = useDrivingStore((s) => s.narrationOn);
-
-  // Load Web Speech API voices
-  useEffect(() => {
-    const loadVoices = () => {
-      voiceRef.current = pickDeepVoice();
-    };
-    loadVoices();
-    speechSynthesis.addEventListener("voiceschanged", loadVoices);
-    return () =>
-      speechSynthesis.removeEventListener("voiceschanged", loadVoices);
-  }, []);
 
   const stopAll = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
     speakingRef.current = false;
   }, []);
 
-  // Web Speech API fallback
-  const fallbackSpeak = useCallback(
-    (text: string, subtitle: string) => {
-      if (typeof window === "undefined" || !window.speechSynthesis) return;
-      window.speechSynthesis.cancel();
-      speakingRef.current = true;
-      onSubtitle(subtitle);
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.82;
-      utterance.pitch = 0.72;
-      utterance.volume = 1.0;
-      if (voiceRef.current) utterance.voice = voiceRef.current;
-
-      utterance.onend = () => {
-        speakingRef.current = false;
-        onSubtitle(null);
-      };
-      utterance.onerror = () => {
-        speakingRef.current = false;
-        onSubtitle(null);
-      };
-      window.speechSynthesis.speak(utterance);
-    },
-    [onSubtitle]
-  );
-
-  // Main speak function: ElevenLabs → Web Speech API
+  // Main speak function: ElevenLabs only
   const speak = useCallback(
     async (text: string, subtitle: string) => {
       stopAll();
       speakingRef.current = true;
       onSubtitle(subtitle);
 
-      // Try ElevenLabs API route
       try {
         const res = await fetch("/api/tts", {
           method: "POST",
@@ -131,19 +56,24 @@ export default function NarrationSystem({
           audio.onerror = () => {
             URL.revokeObjectURL(url);
             audioRef.current = null;
-            fallbackSpeak(text, subtitle);
+            speakingRef.current = false;
+            onSubtitle(null);
           };
 
           await audio.play();
           return;
         }
       } catch {
-        // ElevenLabs not available — fall through to Web Speech API
+        // ElevenLabs not available
       }
 
-      fallbackSpeak(text, subtitle);
+      // No fallback — just show subtitle briefly then clear
+      setTimeout(() => {
+        speakingRef.current = false;
+        onSubtitle(null);
+      }, 4000);
     },
-    [onSubtitle, stopAll, fallbackSpeak]
+    [onSubtitle, stopAll]
   );
 
   // Play intro after a short delay

@@ -888,8 +888,8 @@ function HUD({ ready, subtitle }: { ready: boolean; subtitle: string | null }) {
         </button>
       </div>
 
-      {/* Autopilot indicator */}
-      {mode === "autopilot" && (
+      {/* Autopilot indicator - hidden when MPC banner is showing */}
+      {mode === "autopilot" && !useDrivingStore.getState().autoDriveTarget && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1137,7 +1137,7 @@ function snapToRoad(wx: number, wz: number): [number, number] {
   return [-4.18, wz];
 }
 
-/** MPC telemetry dashboard overlay - large, animated, impressive */
+/** MPC autopilot dashboard — full cockpit HUD with steering viz and live telemetry */
 function MPCDashboard() {
   const telemetry = useDrivingStore((s) => s.autopilotTelemetry);
   const speed = useDrivingStore((s) => s.speed);
@@ -1154,156 +1154,258 @@ function MPCDashboard() {
     ? Math.round((t.waypointIndex / t.waypointCount) * 100)
     : 0;
   const steerDeg = t ? Math.round(t.steerAngle * (180 / Math.PI)) : 0;
+  const steerClamp = Math.max(-45, Math.min(45, steerDeg));
   const cte = t ? t.crossTrackError.toFixed(2) : "0.00";
   const distM = t ? t.distToTarget.toFixed(1) : "0.0";
+  const bColor = building?.color ?? "#00ffff";
 
   return (
-    <motion.div
-      key="mpc-dashboard"
-      initial={{ opacity: 0, x: -60, scale: 0.9 }}
-      animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0, x: -60, scale: 0.9 }}
-      transition={{ type: "spring", damping: 20, stiffness: 200 }}
-      style={{
-        position: "absolute",
-        top: 100,
-        left: 16,
-        zIndex: 40,
-        background: "linear-gradient(135deg, rgba(4,8,20,0.95), rgba(0,20,40,0.92))",
-        border: "1px solid rgba(0,200,255,0.25)",
-        borderRadius: 16,
-        padding: "20px 24px",
-        fontFamily: "'Inter', 'Segoe UI', sans-serif",
-        minWidth: 280,
-        backdropFilter: "blur(16px)",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 40px rgba(0,200,255,0.08), inset 0 1px 0 rgba(255,255,255,0.05)",
-      }}
-    >
-      {/* Animated top border glow */}
-      <div style={{
-        position: "absolute", top: -1, left: 20, right: 20, height: 2,
-        background: "linear-gradient(90deg, transparent, #00ffff, #00ff88, transparent)",
-        borderRadius: 2,
-        opacity: 0.7,
-      }} />
-
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
-        borderBottom: "1px solid rgba(0,200,255,0.12)", paddingBottom: 12,
-      }}>
-        <div style={{
-          width: 10, height: 10, borderRadius: "50%",
-          background: "radial-gradient(circle, #00ff88, #00cc66)",
-          boxShadow: "0 0 12px #00ff88, 0 0 24px rgba(0,255,136,0.3)",
-          animation: "pulse-glow 1.5s ease-in-out infinite",
-        }} />
-        <div>
-          <div style={{ color: "#00ffff", fontSize: 13, fontWeight: 700, letterSpacing: 3 }}>
-            MPC AUTOPILOT
-          </div>
-          <div style={{ color: "#475569", fontSize: 9, letterSpacing: 2, marginTop: 1 }}>
-            AUTONOMOUS NAVIGATION ACTIVE
-          </div>
-        </div>
-      </div>
-
-      {/* Target */}
-      <div style={{
-        background: "rgba(0,200,255,0.06)",
-        borderRadius: 10,
-        padding: "10px 14px",
-        marginBottom: 14,
-        border: "1px solid rgba(0,200,255,0.08)",
-      }}>
-        <div style={{ fontSize: 9, color: "#64748b", letterSpacing: 2, marginBottom: 3, fontWeight: 600 }}>
-          NAVIGATING TO
-        </div>
-        <div style={{
-          fontSize: 18, fontWeight: 800,
-          color: building?.color ?? "#00ffff",
-          letterSpacing: 0.5,
-          textShadow: `0 0 20px ${building?.color ?? "#00ffff"}44`,
-        }}>
-          {building?.label ?? target}
-        </div>
-      </div>
-
-      {/* Main speed display */}
-      <div style={{
-        display: "flex", alignItems: "baseline", gap: 6, marginBottom: 16,
-      }}>
-        <span style={{
-          fontSize: 42, fontWeight: 900, color: "#00ffff",
-          lineHeight: 1, fontFamily: "'Inter', sans-serif",
-          textShadow: "0 0 30px rgba(0,255,255,0.3)",
-        }}>
-          {kmh}
+    <>
+      {/* ── Full-width top autopilot banner ── */}
+      <motion.div
+        initial={{ y: -60, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: -60, opacity: 0 }}
+        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+        style={{
+          position: "absolute", top: 0, left: 0, right: 0, zIndex: 45,
+          height: 52,
+          background: "linear-gradient(180deg, rgba(0,20,40,0.92) 0%, rgba(0,10,20,0.85) 100%)",
+          borderBottom: "1px solid rgba(0,200,255,0.2)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
+          fontFamily: "'Inter', sans-serif",
+          backdropFilter: "blur(16px)",
+        }}
+      >
+        {/* Animated scan line across banner */}
+        <motion.div
+          animate={{ left: ["-10%", "110%"] }}
+          transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
+          style={{
+            position: "absolute", top: 0, width: "15%", height: "100%",
+            background: "linear-gradient(90deg, transparent, rgba(0,255,255,0.06), transparent)",
+            pointerEvents: "none",
+          }}
+        />
+        <motion.div
+          animate={{ opacity: [1, 0.4, 1] }}
+          transition={{ repeat: Infinity, duration: 1.5 }}
+          style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: "#00ff88",
+            boxShadow: "0 0 12px #00ff88, 0 0 24px rgba(0,255,136,0.4)",
+          }}
+        />
+        <span style={{ color: "#00ffff", fontSize: 12, fontWeight: 800, letterSpacing: 6 }}>
+          AUTONOMOUS NAVIGATION
         </span>
-        <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>km/h</span>
-        <span style={{ fontSize: 11, color: "#334155", marginLeft: "auto" }}>
-          Target: {targetKmh} km/h
+        <span style={{ color: "#334155", fontSize: 11 }}>|</span>
+        <span style={{ color: bColor, fontWeight: 700, fontSize: 13, textShadow: `0 0 12px ${bColor}66` }}>
+          {building?.label}
         </span>
-      </div>
-
-      {/* Metrics grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 8px", marginBottom: 14 }}>
-        {[
-          { label: "STEER", value: `${steerDeg}\u00B0`, color: Math.abs(steerDeg) > 15 ? "#f59e0b" : "#94a3b8" },
-          { label: "CTE", value: `${cte}m`, color: parseFloat(cte) > 0.5 ? "#ef4444" : "#22c55e" },
-          { label: "DIST", value: `${distM}u`, color: "#a78bfa" },
-        ].map((m) => (
-          <div key={m.label} style={{
-            background: "rgba(255,255,255,0.02)",
-            borderRadius: 8,
-            padding: "8px 10px",
-            border: "1px solid rgba(255,255,255,0.04)",
-          }}>
-            <div style={{ fontSize: 8, color: "#475569", letterSpacing: 2, fontWeight: 600 }}>
-              {m.label}
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: m.color, lineHeight: 1.3 }}>
-              {m.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Progress section */}
-      <div style={{ marginBottom: 4 }}>
-        <div style={{
-          display: "flex", justifyContent: "space-between", marginBottom: 6,
-        }}>
-          <span style={{ fontSize: 9, color: "#64748b", letterSpacing: 2, fontWeight: 600 }}>ROUTE PROGRESS</span>
-          <span style={{ fontSize: 13, color: "#00ff88", fontWeight: 800 }}>{progress}%</span>
-        </div>
-        <div style={{
-          height: 6, borderRadius: 3,
-          background: "rgba(255,255,255,0.06)", overflow: "hidden",
-          boxShadow: "inset 0 1px 2px rgba(0,0,0,0.3)",
-        }}>
+        <span style={{ color: "#334155", fontSize: 11 }}>|</span>
+        <span style={{ color: "#00ff88", fontSize: 12, fontWeight: 700 }}>
+          {progress}%
+        </span>
+        {/* Bottom progress bar */}
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(0,200,255,0.08)" }}>
           <motion.div
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-            style={{
-              height: "100%",
-              background: "linear-gradient(90deg, #00ffff, #00ff88)",
-              borderRadius: 3,
-              boxShadow: "0 0 8px rgba(0,255,170,0.4)",
-            }}
+            style={{ height: "100%", background: "linear-gradient(90deg, #00ffff, #00ff88)", boxShadow: "0 0 8px rgba(0,255,200,0.5)" }}
           />
         </div>
-      </div>
+      </motion.div>
 
-      {/* Waypoint counter */}
-      <div style={{
-        marginTop: 8, fontSize: 9, color: "#334155",
-        display: "flex", justifyContent: "space-between",
-      }}>
-        <span>WP {t?.waypointIndex ?? 0}/{t?.waypointCount ?? 0}</span>
-        <span>Press any key to cancel</span>
-      </div>
-    </motion.div>
+      {/* ── Left panel: MPC controller telemetry ── */}
+      <motion.div
+        key="mpc-dashboard"
+        initial={{ opacity: 0, x: -80, scale: 0.85 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
+        exit={{ opacity: 0, x: -80, scale: 0.85 }}
+        transition={{ type: "spring", damping: 22, stiffness: 180 }}
+        style={{
+          position: "absolute",
+          top: 68,
+          left: 16,
+          zIndex: 40,
+          background: "linear-gradient(160deg, rgba(2,6,18,0.96), rgba(0,15,35,0.94))",
+          border: "1px solid rgba(0,200,255,0.18)",
+          borderRadius: 18,
+          padding: "22px 26px 18px",
+          fontFamily: "'Inter', sans-serif",
+          width: 320,
+          backdropFilter: "blur(20px)",
+          boxShadow: "0 12px 48px rgba(0,0,0,0.7), 0 0 60px rgba(0,200,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04)",
+        }}
+      >
+        {/* Top glow edge */}
+        <motion.div
+          animate={{ opacity: [0.4, 0.8, 0.4] }}
+          transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+          style={{
+            position: "absolute", top: -1, left: 24, right: 24, height: 2,
+            background: "linear-gradient(90deg, transparent, #00ffff, #00ff88, transparent)",
+            borderRadius: 2,
+          }}
+        />
+
+        {/* MPC CONTROLLER header */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, marginBottom: 16,
+          borderBottom: "1px solid rgba(0,200,255,0.1)", paddingBottom: 14,
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: "linear-gradient(135deg, rgba(0,200,255,0.15), rgba(0,255,136,0.1))",
+            border: "1px solid rgba(0,200,255,0.2)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 15,
+          }}>
+            {"\u2699"}
+          </div>
+          <div>
+            <div style={{ color: "#00ffff", fontSize: 14, fontWeight: 800, letterSpacing: 2 }}>
+              MPC CONTROLLER
+            </div>
+            <div style={{ color: "#475569", fontSize: 9, letterSpacing: 2, marginTop: 2 }}>
+              MODEL PREDICTIVE CONTROL
+            </div>
+          </div>
+        </div>
+
+        {/* Steering wheel visualization */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "10px 0 16px", position: "relative",
+        }}>
+          <svg width={120} height={120} viewBox="-60 -60 120 120">
+            {/* Outer ring */}
+            <circle cx={0} cy={0} r={52} fill="none" stroke="rgba(0,200,255,0.12)" strokeWidth={2} />
+            {/* Tick marks */}
+            {Array.from({ length: 24 }).map((_, i) => {
+              const angle = (i / 24) * 360 - 90;
+              const rad = (angle * Math.PI) / 180;
+              const isMajor = i % 6 === 0;
+              return (
+                <line
+                  key={i}
+                  x1={Math.cos(rad) * (isMajor ? 42 : 46)}
+                  y1={Math.sin(rad) * (isMajor ? 42 : 46)}
+                  x2={Math.cos(rad) * 52}
+                  y2={Math.sin(rad) * 52}
+                  stroke={isMajor ? "rgba(0,200,255,0.5)" : "rgba(0,200,255,0.15)"}
+                  strokeWidth={isMajor ? 2 : 1}
+                />
+              );
+            })}
+            {/* Steering needle */}
+            <g transform={`rotate(${steerClamp})`}>
+              <line x1={0} y1={4} x2={0} y2={-44} stroke="#00ffff" strokeWidth={3} strokeLinecap="round" />
+              <circle cx={0} cy={-44} r={3} fill="#00ffff" />
+              <circle cx={0} cy={0} r={6} fill="rgba(0,200,255,0.2)" stroke="#00ffff" strokeWidth={1.5} />
+            </g>
+            {/* Center label */}
+            <text x={0} y={24} textAnchor="middle" fill="#64748b" fontSize={9} fontFamily="Inter" fontWeight={600}>
+              {steerDeg > 0 ? "+" : ""}{steerDeg}&deg;
+            </text>
+          </svg>
+          {/* Left/Right labels */}
+          <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "#334155", fontSize: 8, letterSpacing: 2, fontWeight: 700 }}>L</div>
+          <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: "#334155", fontSize: 8, letterSpacing: 2, fontWeight: 700 }}>R</div>
+        </div>
+
+        {/* Speed + Target speed bar */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 14, padding: "12px 16px",
+          background: "rgba(0,200,255,0.04)", borderRadius: 12,
+          border: "1px solid rgba(0,200,255,0.06)", marginBottom: 12,
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 8, color: "#475569", letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>SPEED</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+              <span style={{ fontSize: 32, fontWeight: 900, color: "#00ffff", lineHeight: 1 }}>{kmh}</span>
+              <span style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>km/h</span>
+            </div>
+          </div>
+          <div style={{ width: 1, height: 40, background: "rgba(0,200,255,0.12)" }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 8, color: "#475569", letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>TARGET</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+              <span style={{ fontSize: 32, fontWeight: 900, color: "#00ff88", lineHeight: 1 }}>{targetKmh}</span>
+              <span style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>km/h</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Telemetry metrics */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+          {[
+            { label: "CROSS-TRACK ERR", value: cte, unit: "m", color: parseFloat(cte) > 0.5 ? "#ef4444" : "#22c55e" },
+            { label: "DISTANCE", value: distM, unit: "u", color: "#a78bfa" },
+            { label: "WAYPOINT", value: `${t?.waypointIndex ?? 0}`, unit: `/ ${t?.waypointCount ?? 0}`, color: "#f59e0b" },
+            { label: "PROGRESS", value: `${progress}`, unit: "%", color: "#00ff88" },
+          ].map((m) => (
+            <div key={m.label} style={{
+              background: "rgba(255,255,255,0.02)",
+              borderRadius: 10,
+              padding: "10px 12px",
+              border: "1px solid rgba(255,255,255,0.04)",
+            }}>
+              <div style={{ fontSize: 7, color: "#475569", letterSpacing: 2, fontWeight: 700, marginBottom: 4 }}>
+                {m.label}
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
+                <span style={{ fontSize: 20, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</span>
+                <span style={{ fontSize: 9, color: "#475569", fontWeight: 600 }}>{m.unit}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Route progress bar */}
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ fontSize: 8, color: "#475569", letterSpacing: 2, fontWeight: 700 }}>ROUTE COMPLETION</span>
+            <span style={{ fontSize: 12, color: "#00ff88", fontWeight: 800 }}>{progress}%</span>
+          </div>
+          <div style={{
+            height: 8, borderRadius: 4,
+            background: "rgba(255,255,255,0.04)", overflow: "hidden",
+            boxShadow: "inset 0 1px 3px rgba(0,0,0,0.4)",
+          }}>
+            <motion.div
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              style={{
+                height: "100%",
+                background: "linear-gradient(90deg, #00ffff, #00ff88, #00ffcc)",
+                borderRadius: 4,
+                boxShadow: "0 0 12px rgba(0,255,200,0.5)",
+                position: "relative",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          marginTop: 14, paddingTop: 10,
+          borderTop: "1px solid rgba(0,200,255,0.08)",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <span style={{ fontSize: 8, color: "#334155", letterSpacing: 2 }}>PRESS ANY KEY TO CANCEL</span>
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <motion.div
+              animate={{ opacity: [1, 0.3, 1] }}
+              transition={{ repeat: Infinity, duration: 1 }}
+              style={{ width: 5, height: 5, borderRadius: "50%", background: "#00ff88" }}
+            />
+            <span style={{ fontSize: 8, color: "#00ff88", fontWeight: 700, letterSpacing: 1 }}>LIVE</span>
+          </div>
+        </div>
+      </motion.div>
+    </>
   );
 }
 
